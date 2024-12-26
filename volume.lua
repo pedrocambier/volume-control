@@ -2,6 +2,7 @@ local volume = {}
 
 local awful = require ("awful")
 local wibox = require ("wibox")
+local beautiful = require ("beautiful")
 
 -- Helper Function
 local function cmd(command)
@@ -9,29 +10,47 @@ local function cmd(command)
 end
 
 -- Local Varibales
-local level = 16 -- initial level
+local init = true
+local level = 50 -- initial level
 local muted = false
 local MIN = 0 -- minimum volume level of 'amixer plyback'
-local MAX = 31 -- maximum volume level of 'amixer playback'
-local STEP = 1 -- step to update volume level (up / down).
+local MAX = 100 -- maximum volume level of 'amixer playback'
+local STEP = 5 -- step to update volume level (up / down).
 local widget = wibox.widget{
 	markup = '',
 	halign = "center",
 	valign = "center",
+	font = beautiful.font,
 	widget = wibox.widget.textbox
 }
 
 -- Local Fucntions
 local function getmessage(value)
-	return string.format(" vol:%-4s|", value)
+	return string.format(" %-4s  ", value)
 end
 local function updatewidget()
-	levelperc = math.floor((level / MAX)*100)
-	if(muted) then
-		widget.markup = getmessage("M")
+	if(init) then
+		awful.spawn.easy_async("wpctl get-volume @DEFAULT_AUDIO_SINK@", function(stdout)
+			local value = tonumber(string.match(stdout, "%d%.%d+"))
+			level = value * 100
+			levelperc = math.tointeger(level)
+			if(string.find(stdout, "MUTED")) then
+				muted = true
+				widget.markup = getmessage("  " .. levelperc .. "%")
+			else
+				muted = false
+				widget.markup = getmessage("  " .. levelperc .. "%")
+			end
+		end)
+		init = false
 		return
 	end
-	widget.markup = getmessage(levelperc .. "%")
+	levelperc = math.tointeger(level)
+	if(muted) then
+		widget.markup = getmessage("  " .. levelperc .. "%")
+		return
+	end
+	widget.markup = getmessage("  " .. levelperc .. "%")
 end
 
 -- Update the widget to set an initial value
@@ -54,22 +73,21 @@ function volume.getwidget()
 end
 
 function volume.up()
-	cmd("pactl set-sink-volume @DEFAULT_SINK@ +" .. STEP .. "%")
+	cmd("wpctl set-volume -l 1.0 @DEFAULT_AUDIO_SINK@ " .. STEP .. "%+")
 	--cmd("amixer set Master playback " .. STEP .. "+")
 	updatelevel(STEP)
 	updatewidget()
 end
 
 function volume.down()
-	cmd("pactl set-sink-volume @DEFAULT_SINK@ +" .. STEP .."%")
-	--cmd("amixer set Master playback " .. STEP .. "-")
+	cmd("wpctl set-volume @DEFAULT_AUDIO_SINK@ " .. STEP .. "%-")
 	updatelevel(-STEP)
 	updatewidget()
 end
 
 -- Mute / Unmute
 function volume.toggle()
-	cmd("amixer set Master playback toggle")
+	cmd("wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle")
 	muted = not muted
 	updatewidget()
 end
